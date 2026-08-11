@@ -1,0 +1,11 @@
+<!-- Step 1: include our secure javascript file -->
+<script src="https://www.desmos.com/api/v1.12/calculator.js?apiKey=b56436eae3c64b98b41ab79835663f46"></script>
+
+<!-- Step 2: add an element to the page -->
+<div id="calculator" style="width: 600px; height: 400px;"></div>
+
+<!-- Step 3: add the following lines of javascript -->
+<script>
+    var elt = document.getElementById('calculator');
+    var calculator = Desmos.GraphingCalculator(elt);
+</script>
