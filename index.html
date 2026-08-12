@@ -1,11 +1,166 @@
-<!-- Step 1: include our secure javascript file -->
-<script src="https://www.desmos.com/api/v1.12/calculator.js?apiKey=b56436eae3c64b98b41ab79835663f46"></script>
+<!DOCTYPE html>
+<html>
+  <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width,initial-scale=1" />
+      <title>NMR</title>
+      <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
+      <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
+  </head>
+  Speed:
+  <input type="text" id="speed" value="1"  size="3">
+  <br>
+  &omega;<sub>0</sub>:
+  <input type="text" id="w0" value="1"  size="3">
+  &omega;<sub>1</sub>:
+  <input type="text" id="w1" value="0.25"  size="3">
+  <br><br>
+  <button id="apply-button">Apply</button>
+  <br>
+  <button id="reset-button" onclick="start()">Start/Reset</button>
+  <button id="pause-button">Pause/Resume</button>
+  <br>
+  <button id="rf-button">Toggle RF</button>
+  <button id="90-button">90˚ Pulse</button>
+  <button id="180-button">180˚ Pulse</button>
+  <div id="output"></div>
+  <script type="py" config="packages=['numpy']">
+    from pyscript import web, when, window
+    import numpy as np
+    @when("click", "#reset-button")
+    def reset(event):
+        window.speed=float(web.page["speed"].value)
+        window.w0=float(web.page["w0"].value)
+        window.w1=float(web.page["w1"].value)
+        window.rf=False
+        window.M=[0,0,1]
+        window.t=0
+        window.paused=False
+    @when("click", "#apply-button")
+    def apply(event):
+        window.speed=float(web.page["speed"].value)
+        window.w0=float(web.page["w0"].value)
+        window.w1=float(web.page["w1"].value)
+    @when("click", "#pause-button")
+    def pause(event):
+        window.paused = not window.paused
+    @when("click", "#rf-button")
+    def toggle_rf(event):
+      window.rf = not window.rf
+    def B(t):
+      Bt=np.array([0.0,0.0,1.0])
+      if(window.rf):
+        Bt[1]=window.w1*np.cos(window.w0*t)
+      return Bt
+    def bloch_rhs(t, M, gamma, B, T1, T2, M0):
+      Mx, My, Mz = M
+      Bx, By, Bz = B
+  
+      dMx = gamma * (My*Bz - Mz*By) - Mx/T2
+      dMy = gamma * (Mz*Bx - Mx*Bz) - My/T2
+      dMz = gamma * (Mx*By - My*Bx) - (Mz - M0)/T1
+  
+      return np.array([dMx, dMy, dMz])
+    
+    def rk4_step(t, M, h, gamma, T1, T2, M0):
+      k1 = bloch_rhs(t,       M,           gamma, B(t), T1, T2, M0)
+      k2 = bloch_rhs(t+h/2,   M+h*k1/2,    gamma, B(t+ h/2), T1, T2, M0)
+      k3 = bloch_rhs(t+h/2,   M+h*k2/2,    gamma, B(t+ h/2), T1, T2, M0)
+      k4 = bloch_rhs(t+h,     M+h*k3,      gamma, B(t+ h), T1, T2, M0)
+  
+      return M + h*(k1 + 2*k2 + 2*k3 + k4)/6
 
-<!-- Step 2: add an element to the page -->
-<div id="calculator" style="width: 600px; height: 400px;"></div>
+    def update(t, dt):
+      M=np.array([window.M[0],window.M[1],window.M[2]])
+      print(M, dt)
+      M = rk4_step(t, M, dt, window.w0, 100, 100, 1)
+      Mx, My, Mz = M
+      window.M[0]=Mx
+      window.M[1]=My
+      window.M[2]=Mz
+      return t
+      
+    window.updatePython = update
 
-<!-- Step 3: add the following lines of javascript -->
-<script>
-    var elt = document.getElementById('calculator');
-    var calculator = Desmos.GraphingCalculator(elt);
-</script>
+  </script>
+
+  <script src="https://www.desmos.com/api/v1.12/calculator.js?apiKey=b56436eae3c64b98b41ab79835663f46"></script>
+  <div id="calculator3d" style="height: 70vh; width: 70vw"></div>
+  <script>
+    var elt = document.getElementById('calculator3d');
+    var calculator3d = Desmos.Calculator3D(elt);
+    window.addEventListener("updated", () => {
+      console.log(window.l)
+      calculator3d.setExpression({ id: 'parabola', latex: window.l });
+    });
+    let lastTime = performance.now();
+    async function animate(time) {
+    
+      if (!window.paused&&window.updatePython) {
+        // const t = time/1000;
+        // const dt = Math.min(0.1, (time - lastTime)/1000);
+        // lastTime = time;
+        let M_prev=[window.M[0], window.M[1], window.M[2]]
+        const result = await window.updatePython(window.t, window.speed*0.0335);
+        calculator3d.setExpression({ id: 'x', latex: "X="+window.M[0] });
+        calculator3d.setExpression({ id: 'y', latex: "Y="+window.M[1] });
+        calculator3d.setExpression({ id: 'z', latex: "Z="+window.M[2] });
+        calculator3d.setExpression({latex:'\\operatorname{segment}\\left(('+M_prev[0]+','+M_prev[1]+','+M_prev[2]+'),('+window.M[0]+','+window.M[1]+','+window.M[2]+')\\right)', color: '#aaaaaa'})
+        calculator3d.setExpression({ id: 't', latex: "T="+window.t });
+        window.t+=window.speed*0.0335;
+      }
+      
+      requestAnimationFrame(animate);
+  }
+  window.animationSatrted=false;
+  function start() {
+    calculator3d.setBlank();
+    calculator3d.setState({
+        "version": 11,
+        "randomSeed": "086c3de248ca06b4c8ac73147b0941c7",
+        "graph": {
+            "viewport": {
+                "xmin": -1.5,
+                "ymin": -1.5,
+                "zmin": -1.5,
+                "xmax": 1.5,
+                "ymax": 1.5,
+                "zmax": 1.5
+            },
+            "product": "graphing-3d",
+            "threeDMode": true,
+            "__v12ViewportLatexStash": {
+                "xmin": "-1.5",
+                "xmax": "1.5",
+                "ymin": "-1.5",
+                "ymax": "1.5",
+                "zmin": "-1.5",
+                "zmax": "1.5"
+            }
+        },
+        "expressions": {
+            "list": [
+                {
+                    "type": "expression",
+                    "id": "1",
+                    "color": "#c74440"
+                }
+            ]
+        },
+        "includeFunctionParametersInRandomSeed": true,
+        "doNotMigrate3dLineWidthZero": true,
+        "doNotMigrateMovablePointStyle": true
+    });
+    calculator3d.setExpression({ id: 'p', latex: "p=(X,Y,Z)" });
+    calculator3d.setExpression({ id: 'o', latex: "o=(0,0,0)" });
+    calculator3d.setExpression({ id: 'vec', latex: "\\operatorname{vector}\\left(o,p\\right)" });
+
+    if (!window.animationStarted && window.updatePython) {
+        window.animationStarted = true;
+        requestAnimationFrame(animate);
+    }
+  }
+  
+  </script>
+  </body>
+</html>
